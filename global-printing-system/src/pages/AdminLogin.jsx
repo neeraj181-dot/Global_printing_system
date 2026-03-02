@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authAPI } from '../services/api';
+import { ShieldAlert, Mail, Lock, ArrowRight, Loader2, Key } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 const AdminLogin = () => {
   const [email, setEmail] = useState('');
@@ -21,81 +23,95 @@ const AdminLogin = () => {
       login(data, data.token);
       navigate('/admin/dashboard');
     } catch (err) {
-      setError(err.response?.data?.message || 'Admin login failed. Please try again.');
+      setError(err.response?.data?.message || 'Access Denied. Credentials Invalid.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-8">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-10">
-          <div className="inline-block mb-4">
-            <div className="w-20 h-20 bg-gradient-to-br from-orange-600 to-red-600 rounded-3xl flex items-center justify-center shadow-2xl transform hover:scale-110 transition-transform duration-300">
-              <span className="text-5xl">⚙️</span>
-            </div>
-          </div>
-          <h1 className="text-5xl font-bold mb-3">
-            <span className="bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
-              Admin Portal
-            </span>
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400 text-lg">Secure admin access only</p>
-        </div>
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-8 relative overflow-hidden">
+      {/* Dark Gradient Background */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(185,28,28,0.1),transparent)]" />
 
-        <div className="card">
-          <form onSubmit={handleSubmit} className="space-y-5">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-lg relative z-10"
+      >
+        <div className="glass-card rounded-[3rem] p-12 lg:p-16 border border-white/5 shadow-2xl">
+          <div className="text-center mb-12">
+            <div className="w-20 h-20 bg-slate-900 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-2xl border border-white/5">
+              <ShieldAlert className="text-red-500 w-10 h-10" />
+            </div>
+            <h2 className="text-4xl font-black text-white tracking-tighter mb-2 italic">Admin <span className="text-red-600">Secure</span></h2>
+            <p className="text-slate-500 font-bold uppercase tracking-[0.3em] text-[10px]">Restricted Infrastructure Port</p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
-              <div className="bg-gradient-to-r from-red-50 to-pink-50 dark:from-red-900/20 dark:to-pink-900/20 border-2 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-5 py-4 rounded-xl text-sm font-medium">
-                ⚠️ {error}
-              </div>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-red-500/10 border border-red-500/20 text-red-500 p-5 rounded-2xl text-xs font-bold uppercase tracking-widest text-center"
+              >
+                {error}
+              </motion.div>
             )}
 
             <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-                Admin Email
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input-field"
-                placeholder="admin@globalprint.com"
-                required
-              />
+              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 ml-2">Root Identifier</label>
+              <div className="relative">
+                <Mail className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-white/5 border-2 border-white/5 rounded-2xl py-5 pl-16 pr-6 text-white font-bold outline-none focus:border-red-600/50 focus:bg-white/10 transition-all placeholder:text-slate-700"
+                  placeholder="admin@system.internal"
+                  required
+                />
+              </div>
             </div>
 
             <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input-field"
-                placeholder="••••••••"
-                required
-              />
+              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 ml-2">Override Key</label>
+              <div className="relative">
+                <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-white/5 border-2 border-white/5 rounded-2xl py-5 pl-16 pr-6 text-white font-bold outline-none focus:border-red-600/50 focus:bg-white/10 transition-all placeholder:text-slate-700"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
             </div>
 
-            <button
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-semibold py-3 px-8 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full h-18 bg-red-600 hover:bg-red-700 text-white text-lg font-black tracking-widest uppercase rounded-2xl flex items-center justify-center gap-3 transition-colors shadow-lg shadow-red-900/20"
             >
-              {loading ? '🔄 Signing in...' : '🔐 Admin Sign In'}
-            </button>
+              {loading ? <Loader2 className="animate-spin" /> : (
+                <>
+                  Bypass Authorization
+                  <Key size={20} />
+                </>
+              )}
+            </motion.button>
           </form>
 
-          <div className="mt-8 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl border border-orange-200 dark:border-orange-800">
-            <p className="text-xs text-center text-orange-700 dark:text-orange-400 font-medium">
-              🔒 This is a secure admin-only area. Unauthorized access is prohibited.
+          <div className="mt-12 p-6 bg-white/5 rounded-2xl border border-white/5">
+            <p className="text-[10px] text-center text-slate-500 font-black uppercase tracking-widest leading-relaxed">
+              ⚠️ Warning: All administrative actions are logged and encrypted. Unauthorized access will trigger a security isolation event.
             </p>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

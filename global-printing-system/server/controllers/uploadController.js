@@ -19,16 +19,15 @@ const storage = multer.diskStorage({
   },
 });
 
-// File filter
+// File filter - ONLY PDF files allowed
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = /pdf|doc|docx|jpg|jpeg|png/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
+  const extname = path.extname(file.originalname).toLowerCase() === '.pdf';
+  const mimetype = file.mimetype === 'application/pdf';
 
   if (extname && mimetype) {
     cb(null, true);
   } else {
-    cb(new Error('Only PDF, DOC, DOCX, JPG, and PNG files are allowed'));
+    cb(new Error('Only PDF files are allowed'));
   }
 };
 
@@ -57,6 +56,7 @@ exports.handleUpload = (req, res) => {
       fileSize: req.file.size,
     });
   } catch (error) {
+    console.error('Upload error:', error);
     res.status(500).json({ message: error.message });
   }
 };

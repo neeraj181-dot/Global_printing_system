@@ -1,389 +1,198 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import Sidebar from '../components/Sidebar';
-import { uploadAPI, orderAPI } from '../services/api';
+﻿import { useState, useEffect } from "react";
+import { useAuth } from "../context/AuthContext";
+import Sidebar from "../components/Sidebar";
+import Chatbot from "../components/Chatbot";
+import { orderAPI, uploadAPI } from "../services/api";
+import * as pdfjsLib from "pdfjs-dist";
+import pdfWorker from "pdfjs-dist/build/pdf.worker?url";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 const Dashboard = () => {
   const { user } = useAuth();
-  const navigate = useNavigate();
-  
-  // Form state
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  
-  // Print options
-  const [printOptions, setPrintOptions] = useState({
-    totalPages: 1,
-    printType: 'bw',
-    copies: 1,
-    doubleSided: false,
-    binding: false,
-    urgent: false,
-  });
+  const [file, setFile] = useState(null);
+  const [pages, setPages] = useState(0);
+  const [copies, setCopies] = useState(1);
+  const [printType, setPrintType] = useState("bw");
+  const [doubleSided, setDoubleSided] = useState(false);
+  const [binding, setBinding] = useState(false);
+  const [paperSize, setPaperSize] = useState("A4");
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [queueNumber, setQueueNumber] = useState(null);
+  const [error, setError] = useState("");
 
-  // Handle file selection
+  useEffect(() => {
+    if (pages > 0) {
+      const effectivePages = doubleSided ? Math.ceil(pages / 2) : pages;
+      const pricePerPage = printType === "bw" ? 2 : 10;
+      const basePrice = effectivePages * copies * pricePerPage;
+      const serviceCharge = 5;
+      const bindingCharge = binding ? 30 : 0;
+      const calculatedTotal = basePrice + serviceCharge + bindingCharge;
+      setTotal(calculatedTotal);
+    }
+  }, [pages, copies, printType, doubleSided, binding]);
+
   const handleFileChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    // Validate file type
-    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png'];
-    if (!allowedTypes.includes(file.type)) {
-      setError('Only PDF, DOC, DOCX, JPG, and PNG files are allowed');
+    const selectedFile = e.target.files[0];
+    if (!selectedFile) return;
+    if (selectedFile.type !== "application/pdf") {
+      setError("Only PDF files are allowed");
+      setFile(null);
+      setPages(0);
       return;
     }
-
-    // Validate file size (20MB)
-    if (file.size > 20 * 1024 * 1024) {
-      setError('File size must be less than 20MB');
-      return;
+    setError("");
+    setFile(selectedFile);
+    try {
+      const arrayBuffer = await selectedFile.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const numPages = pdf.numPages;
+      setPages(numPages);
+    } catch (err) {
+      setError("Failed to detect PDF pages");
+      setFile(null);
+      setPages(0);
     }
-
-    setError('');
-    setSelectedFile(file);
   };
 
-  // Calculate price
-  const calculatePrice = () => {
-    if (!selectedFile || printOptions.totalPages < 1 || printOptions.copies < 1) return 0;
-    
-    let basePrice = printOptions.printType === 'color' ? 5 : 2;
-    basePrice = basePrice * printOptions.totalPages * printOptions.copies;
-
-    // Apply double-sided discount
-    if (printOptions.doubleSided) {
-      basePrice = basePrice * 0.9;
-    }
-
-    // Add binding cost
-    if (printOptions.binding) {
-      basePrice += 30;
-    }
-
-    // Add urgent cost
-    if (printOptions.urgent) {
-      basePrice += 20;
-    }
-
-    // Calculate GST (18%)
-    const gst = basePrice * 0.18;
-    const finalAmount = Math.round(basePrice + gst);
-
-    return finalAmount;
-  };
-
-  // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
-
-    // Validation
-    if (!selectedFile) {
-      setError('Please select a file to upload');
+    if (!file || pages === 0) {
+      setError("Please upload a valid PDF file");
       return;
     }
-
-    if (printOptions.copies < 1) {
-      setError('Number of copies must be at least 1');
-      return;
-    }
-
-    if (printOptions.totalPages < 1) {
-      setError('Number of pages must be at least 1');
-      return;
-    }
-
+    setLoading(true);
+    setError("");
     try {
-      setSubmitting(true);
-
-      // Step 1: Upload file
-      setUploading(true);
       const formData = new FormData();
-      formData.append('file', selectedFile);
-
-      const uploadResponse = await uploadAPI.uploadFile(formData);
-      setUploading(false);
-
-      // Step 2: Create order
+      formData.append("file", file);
+      const uploadRes = await uploadAPI.uploadFile(formData);
+      const effectivePages = doubleSided ? Math.ceil(pages / 2) : pages;
       const orderData = {
-        filePath: uploadResponse.data.filePath,
-        fileName: uploadResponse.data.fileName,
-        totalPages: printOptions.totalPages,
-        printType: printOptions.printType,
-        copies: printOptions.copies,
-        doubleSided: printOptions.doubleSided,
-        binding: printOptions.binding,
-        urgent: printOptions.urgent,
+        filePath: uploadRes.data.filePath,
+        fileName: uploadRes.data.fileName,
+        pages,
+        effectivePages,
+        copies,
+        printType,
+        doubleSided,
+        binding,
+        paperSize,
+        totalPrice: total,
       };
-
-      const orderResponse = await orderAPI.createOrder(orderData);
-
-      // Success
-      setSuccess('Order created successfully! Redirecting to payment...');
-      
-      // Reset form
-      setTimeout(() => {
-        setSelectedFile(null);
-        setPrintOptions({
-          totalPages: 1,
-          printType: 'bw',
-          copies: 1,
-          doubleSided: false,
-          binding: false,
-          urgent: false,
-        });
-        
-        // Redirect to orders page
-        navigate('/orders');
-      }, 2000);
-
+      const orderRes = await orderAPI.createOrder(orderData);
+      setQueueNumber(orderRes.data.order.queueNumber);
+      setShowSuccess(true);
+      setFile(null);
+      setPages(0);
+      setCopies(1);
+      setPrintType("bw");
+      setDoubleSided(false);
+      setBinding(false);
+      setPaperSize("A4");
+      setTotal(0);
+      e.target.reset();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create order. Please try again.');
+      setError(err.response?.data?.message || "Failed to place order");
     } finally {
-      setSubmitting(false);
-      setUploading(false);
+      setLoading(false);
     }
   };
 
-  const totalPrice = calculatePrice();
+  const effectivePages = doubleSided ? Math.ceil(pages / 2) : pages;
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+    <div className="min-h-screen bg-slate-950 flex">
       <Sidebar />
-      
-      <main className="flex-1 p-8 overflow-auto">
-        <div className="max-w-6xl mx-auto">
-          {/* Header */}
-          <div className="mb-10">
-            <h1 className="text-4xl font-bold text-white mb-2">
-              Welcome back, <span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">{user?.name}</span>! 👋
-            </h1>
-            <p className="text-gray-400 text-lg">
-              Upload your documents and configure your printing preferences
-            </p>
+      <div className="flex-1 p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-white mb-2">Welcome, {user?.name || "User"}!</h1>
+            <p className="text-gray-400">Upload your PDF and place a print order</p>
           </div>
-
-          {/* Error Message */}
-          {error && (
-            <div className="mb-6 bg-red-500/10 border-2 border-red-500 text-red-400 px-6 py-4 rounded-2xl backdrop-blur-sm">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">⚠️</span>
-                <span className="font-medium">{error}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Success Message */}
-          {success && (
-            <div className="mb-6 bg-green-500/10 border-2 border-green-500 text-green-400 px-6 py-4 rounded-2xl backdrop-blur-sm">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">✅</span>
-                <span className="font-medium">{success}</span>
-              </div>
-            </div>
-          )}
-
+          {error && <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400">{error}</div>}
           <form onSubmit={handleSubmit}>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Upload Section */}
-              <div className="bg-white/5 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/10 p-8 hover:shadow-blue-500/20 transition-all duration-300">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl flex items-center justify-center shadow-lg">
-                    <span className="text-2xl">📄</span>
-                  </div>
-                  <h2 className="text-2xl font-bold text-white">Upload Document</h2>
-                </div>
-                
-                <div className="space-y-6">
-                  {/* File Upload */}
-                  <div className="border-3 border-dashed border-blue-500/30 rounded-2xl p-10 text-center hover:border-blue-500 hover:bg-blue-500/5 transition-all duration-300 cursor-pointer group">
-                    <input
-                      type="file"
-                      onChange={handleFileChange}
-                      className="hidden"
-                      id="file-upload"
-                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                      disabled={submitting}
-                    />
-                    <label htmlFor="file-upload" className="cursor-pointer">
-                      <div className="text-7xl mb-4 group-hover:scale-110 transition-transform duration-300">
-                        {selectedFile ? '📎' : '☁️'}
-                      </div>
-                      <p className="text-lg font-semibold text-white mb-2">
-                        {selectedFile ? selectedFile.name : 'Click to upload or drag and drop'}
-                      </p>
-                      <p className="text-sm text-gray-400">PDF, DOC, DOCX, JPG, PNG up to 20MB</p>
-                    </label>
-                  </div>
-
-                  {/* File Info */}
-                  {selectedFile && (
-                    <div className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-2 border-blue-500/30 rounded-2xl p-5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="w-14 h-14 bg-blue-500 rounded-xl flex items-center justify-center shadow-lg">
-                            <span className="text-3xl">📄</span>
-                          </div>
-                          <div>
-                            <p className="text-base font-semibold text-white">{selectedFile.name}</p>
-                            <p className="text-sm text-gray-400">
-                              {(selectedFile.size / 1024).toFixed(2)} KB
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedFile(null)}
-                          className="text-red-400 hover:text-red-300 text-sm font-semibold bg-red-500/10 px-4 py-2 rounded-lg hover:bg-red-500/20 transition-all"
-                          disabled={submitting}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Total Pages Input */}
-                  <div>
-                    <label className="block text-sm font-semibold mb-3 text-gray-300">
-                      Total Pages
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={printOptions.totalPages}
-                      onChange={(e) => setPrintOptions({ ...printOptions, totalPages: parseInt(e.target.value) || 1 })}
-                      className="w-full px-5 py-3 border-2 border-white/10 rounded-xl focus:ring-4 focus:ring-blue-500/30 focus:border-blue-500 bg-white/5 text-white transition-all duration-200 outline-none placeholder-gray-500"
-                      disabled={submitting}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Printing Options */}
-              <div className="bg-white/5 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/10 p-8 hover:shadow-purple-500/20 transition-all duration-300">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg">
-                    <span className="text-2xl">⚙️</span>
-                  </div>
-                  <h2 className="text-2xl font-bold text-white">Printing Options</h2>
-                </div>
-                
-                <div className="space-y-5">
-                  {/* Number of Copies */}
-                  <div>
-                    <label className="block text-sm font-semibold mb-3 text-gray-300">
-                      Number of Copies
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={printOptions.copies}
-                      onChange={(e) => setPrintOptions({ ...printOptions, copies: parseInt(e.target.value) || 1 })}
-                      className="w-full px-5 py-3 border-2 border-white/10 rounded-xl focus:ring-4 focus:ring-blue-500/30 focus:border-blue-500 bg-white/5 text-white transition-all duration-200 outline-none"
-                      disabled={submitting}
-                    />
-                  </div>
-
-                  {/* Print Type */}
-                  <div>
-                    <label className="block text-sm font-semibold mb-3 text-gray-300">
-                      Print Type
-                    </label>
-                    <select
-                      value={printOptions.printType}
-                      onChange={(e) => setPrintOptions({ ...printOptions, printType: e.target.value })}
-                      className="w-full px-5 py-3 border-2 border-white/10 rounded-xl focus:ring-4 focus:ring-blue-500/30 focus:border-blue-500 bg-white/5 text-white transition-all duration-200 outline-none"
-                      disabled={submitting}
-                    >
-                      <option value="bw" className="bg-slate-800">Black & White (₹2/page)</option>
-                      <option value="color" className="bg-slate-800">Color (₹5/page)</option>
-                    </select>
-                  </div>
-
-                  {/* Checkboxes */}
-                  <div className="space-y-3">
-                    <label className="flex items-center gap-3 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={printOptions.doubleSided}
-                        onChange={(e) => setPrintOptions({ ...printOptions, doubleSided: e.target.checked })}
-                        className="w-5 h-5 rounded border-2 border-white/20 bg-white/5 checked:bg-blue-500 focus:ring-2 focus:ring-blue-500/50"
-                        disabled={submitting}
-                      />
-                      <span className="text-gray-300 group-hover:text-white transition-colors">
-                        Double-sided (10% discount)
-                      </span>
-                    </label>
-
-                    <label className="flex items-center gap-3 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={printOptions.binding}
-                        onChange={(e) => setPrintOptions({ ...printOptions, binding: e.target.checked })}
-                        className="w-5 h-5 rounded border-2 border-white/20 bg-white/5 checked:bg-blue-500 focus:ring-2 focus:ring-blue-500/50"
-                        disabled={submitting}
-                      />
-                      <span className="text-gray-300 group-hover:text-white transition-colors">
-                        Binding (+₹30)
-                      </span>
-                    </label>
-
-                    <label className="flex items-center gap-3 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={printOptions.urgent}
-                        onChange={(e) => setPrintOptions({ ...printOptions, urgent: e.target.checked })}
-                        className="w-5 h-5 rounded border-2 border-white/20 bg-white/5 checked:bg-blue-500 focus:ring-2 focus:ring-blue-500/50"
-                        disabled={submitting}
-                      />
-                      <span className="text-gray-300 group-hover:text-white transition-colors">
-                        Urgent (+₹20)
-                      </span>
-                    </label>
-                  </div>
-
-                  {/* Price Summary */}
-                  <div className="pt-6 border-t-2 border-white/10">
-                    <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 rounded-2xl p-6 mb-5 border-2 border-green-500/30">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-lg font-bold text-gray-300">Total Price</span>
-                        <span className="text-5xl font-bold bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
-                          ₹{totalPrice}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-400 text-right">Including 18% GST</p>
-                    </div>
-                    
-                    <button
-                      type="submit"
-                      disabled={!selectedFile || submitting || printOptions.copies < 1 || printOptions.totalPages < 1}
-                      className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 shadow-lg hover:shadow-2xl hover:shadow-blue-500/50 transform hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
-                    >
-                      {submitting ? (
-                        <span className="flex items-center justify-center gap-3">
-                          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
-                          {uploading ? 'Uploading...' : 'Creating Order...'}
-                        </span>
-                      ) : (
-                        '🚀 Submit Print Order'
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
+            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 mb-6">
+              <h2 className="text-xl font-semibold text-white mb-4">Upload PDF</h2>
+              <input type="file" accept=".pdf" onChange={handleFileChange} className="w-full p-3 bg-white/5 border border-white/10 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-gradient-to-r file:from-red-600 file:to-red-700 file:text-white file:cursor-pointer hover:file:from-red-700 hover:file:to-red-800" />
+              {file && <p className="mt-3 text-gray-300">Selected: <span className="text-white font-medium">{file.name}</span></p>}
+              {pages > 0 && <p className="mt-2 text-green-400 font-medium">Pages detected: {pages}</p>}
             </div>
+            {file && pages > 0 && (
+              <>
+                <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 mb-6">
+                  <h2 className="text-xl font-semibold text-white mb-4">Print Options</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-gray-300 mb-2">Copies</label>
+                      <input type="number" min="1" value={copies} onChange={(e) => setCopies(parseInt(e.target.value) || 1)} className="w-full p-3 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-red-500" />
+                    </div>
+                    <div>
+                      <label className="block text-gray-300 mb-2">Print Type</label>
+                      <select value={printType} onChange={(e) => setPrintType(e.target.value)} className="w-full p-3 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-red-500">
+                        <option value="bw">Black and White</option>
+                        <option value="color">Color</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-gray-300 mb-2">Paper Size</label>
+                      <select value={paperSize} onChange={(e) => setPaperSize(e.target.value)} className="w-full p-3 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-red-500">
+                        <option value="A4">A4</option>
+                        <option value="A3">A3</option>
+                        <option value="Legal">Legal</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center">
+                      <input type="checkbox" id="doubleSided" checked={doubleSided} onChange={(e) => setDoubleSided(e.target.checked)} className="w-5 h-5 text-red-600 bg-white/5 border-white/10 rounded" />
+                      <label htmlFor="doubleSided" className="ml-3 text-gray-300">Double-sided</label>
+                    </div>
+                    <div className="flex items-center">
+                      <input type="checkbox" id="binding" checked={binding} onChange={(e) => setBinding(e.target.checked)} className="w-5 h-5 text-red-600 bg-white/5 border-white/10 rounded" />
+                      <label htmlFor="binding" className="ml-3 text-gray-300">Binding (+30)</label>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 mb-6">
+                  <h2 className="text-xl font-semibold text-white mb-4">Price Breakdown</h2>
+                  <div className="space-y-2 text-gray-300">
+                    <div className="flex justify-between"><span>Pages:</span><span className="text-white">{pages}</span></div>
+                    <div className="flex justify-between"><span>Effective Pages:</span><span className="text-white">{effectivePages}</span></div>
+                    <div className="flex justify-between"><span>Copies:</span><span className="text-white">{copies}</span></div>
+                    <div className="flex justify-between"><span>Print Type:</span><span className="text-white">{printType === "bw" ? "B&W" : "Color"}</span></div>
+                    <div className="flex justify-between"><span>Service Charge:</span><span className="text-white">5</span></div>
+                    {binding && <div className="flex justify-between"><span>Binding:</span><span className="text-white">30</span></div>}
+                    <div className="border-t border-white/10 pt-2 mt-2"></div>
+                    <div className="flex justify-between text-lg font-bold"><span className="text-white">Total:</span><span className="text-red-400">{total}</span></div>
+                  </div>
+                </div>
+                <button type="submit" disabled={loading} className="w-full py-4 bg-gradient-to-r from-red-600 to-red-700 text-white font-semibold rounded-xl hover:from-red-700 hover:to-red-800 transition-all disabled:opacity-50">
+                  {loading ? "Placing Order..." : "Place Print Order"}
+                </button>
+              </>
+            )}
           </form>
         </div>
-      </main>
+      </div>
+      {showSuccess && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-slate-900 border border-white/10 rounded-xl p-8 max-w-md mx-4">
+            <div className="text-center">
+              <div className="text-6xl mb-4">✅</div>
+              <h3 className="text-2xl font-bold text-white mb-2">Order Placed!</h3>
+              <p className="text-gray-400 mb-4">Your order has been added to the queue</p>
+              <div className="bg-white/5 border border-white/10 rounded-lg p-4 mb-6">
+                <p className="text-gray-300">Queue Number</p>
+                <p className="text-3xl font-bold text-red-400">#{queueNumber}</p>
+              </div>
+              <button onClick={() => setShowSuccess(false)} className="w-full py-3 bg-gradient-to-r from-red-600 to-red-700 text-white font-semibold rounded-lg hover:from-red-700 hover:to-red-800">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Chatbot />
     </div>
   );
 };

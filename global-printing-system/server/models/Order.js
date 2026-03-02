@@ -14,19 +14,26 @@ const orderSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  totalPages: {
+  pages: {
     type: Number,
     required: true,
+    min: 1,
   },
-  printType: {
-    type: String,
-    enum: ['bw', 'color'],
+  effectivePages: {
+    type: Number,
     required: true,
+    min: 1,
   },
   copies: {
     type: Number,
     required: true,
     default: 1,
+    min: 1,
+  },
+  printType: {
+    type: String,
+    enum: ['bw', 'color'],
+    required: true,
   },
   doubleSided: {
     type: Boolean,
@@ -36,40 +43,23 @@ const orderSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-  urgent: {
-    type: Boolean,
-    default: false,
+  paperSize: {
+    type: String,
+    enum: ['A4', 'A3', 'Legal'],
+    default: 'A4',
   },
-  basePrice: {
+  totalPrice: {
     type: Number,
     required: true,
   },
-  gst: {
+  status: {
+    type: String,
+    enum: ['queued', 'printing', 'completed'],
+    default: 'queued',
+  },
+  queueNumber: {
     type: Number,
     required: true,
-  },
-  finalAmount: {
-    type: Number,
-    required: true,
-  },
-  paymentStatus: {
-    type: String,
-    enum: ['pending', 'paid', 'failed'],
-    default: 'pending',
-  },
-  paymentId: {
-    type: String,
-  },
-  razorpayOrderId: {
-    type: String,
-  },
-  orderStatus: {
-    type: String,
-    enum: ['pending', 'printing', 'ready', 'completed'],
-    default: 'pending',
-  },
-  pickupTime: {
-    type: String,
   },
   createdAt: {
     type: Date,
