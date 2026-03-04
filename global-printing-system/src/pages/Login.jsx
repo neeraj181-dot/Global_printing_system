@@ -1,18 +1,14 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { GoogleLogin } from '@react-oauth/google';
-import { jwtDecode } from 'jwt-decode';
+import { auth, googleProvider } from '../firebase';
+import { signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
 import { useAuth } from '../context/AuthContext';
-import { authAPI } from '../services/api';
-
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -21,29 +17,24 @@ const Login = () => {
     setLoading(true);
 
     try {
-      const { data } = await authAPI.login({ email, password });
-      login(data, data.token);
+      await signInWithEmailAndPassword(auth, email, password);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.message || 'Authentication failed. Verify credentials.');
+      console.error(err);
+      setError(err.message || 'Authentication failed. Verify credentials.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleSuccess = async (credentialResponse) => {
+  const handleGoogleLogin = async () => {
     try {
       setLoading(true);
-      const decoded = jwtDecode(credentialResponse.credential);
-      const { data } = await authAPI.googleLogin({
-        email: decoded.email,
-        name: decoded.name,
-        googleId: decoded.sub,
-      });
-      login(data, data.token);
+      await signInWithPopup(auth, googleProvider);
       navigate('/dashboard');
     } catch (err) {
-      setError('Google synthesis failed. Try traditional login.');
+      console.error(err);
+      setError('Google login failed. Try again.');
     } finally {
       setLoading(false);
     }
@@ -160,26 +151,14 @@ const Login = () => {
             </div>
 
             <div className="flex flex-col gap-4">
-              {GOOGLE_CLIENT_ID ? (
-                <div className="flex justify-center [&>div]:w-full">
-                  <GoogleLogin
-                    onSuccess={handleGoogleSuccess}
-                    onError={() => setError('Google identity failed')}
-                    theme="filled_black"
-                    shape="pill"
-                    width="100%"
-                  />
-                </div>
-              ) : (
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
-                    Google Login Available
-                  </p>
-                  <p className="text-[10px] text-slate-600">
-                    Configure VITE_GOOGLE_CLIENT_ID in .env to enable
-                  </p>
-                </div>
-              )}
+              <button
+                onClick={handleGoogleLogin}
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-4 bg-white/5 border border-white/10 rounded-2xl py-4 hover:bg-white/10 transition-all group"
+              >
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+                <span className="text-white font-bold uppercase tracking-widest text-[10px]">Continue with Google</span>
+              </button>
             </div>
 
             <p className="mt-10 text-center text-sm font-bold text-slate-500">

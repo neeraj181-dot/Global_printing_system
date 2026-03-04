@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { authAPI } from '../services/api';
+import { auth } from '../firebase';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { Printer, Mail, Lock, User, Phone, ArrowRight, Loader2, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -37,10 +38,17 @@ const Register = () => {
     setLoading(true);
 
     try {
-      await authAPI.register(formData);
+      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+      await updateProfile(userCredential.user, {
+        displayName: formData.name
+      });
+      // You might still want to call your backend to save extra info like phone number
+      // await authAPI.register(formData); 
+
       navigate('/', { state: { message: 'Registration successful! Please login.' } });
     } catch (err) {
-      setError(err.response?.data?.message || 'Registration failed. Please try again.');
+      console.error(err);
+      setError(err.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
